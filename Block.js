@@ -22,7 +22,7 @@
     | {type: 'THROW'}
 
     // Guard
-    | {type: 'TRY', try: Block, catch: Block, finally: Block, exit: Block} 
+    | {type: 'TRY', try: Block, catch: Block, finally: Block} 
     ;
 */
 class Block {
@@ -41,6 +41,9 @@ class Block {
     this.abrupt = null;
   }
 
+  // Should dump node and connections to DOT format. This is for debugging.
+  //
+  // https://en.wikipedia.org/wiki/DOT_(graph_description_language)
   dump(visited = new WeakSet) {
     if (visited.has(this)) {
       return;
@@ -59,8 +62,7 @@ exports.Block = Block;
 // For example, the end of a BlockStatement ala:
 //
 // block: {
-//   <- location of NormalCompletion, causes a join
-// }
+// } <- location of .join
 //
 class NormalCompletion {
   /*::
@@ -84,6 +86,8 @@ exports.NormalCompletion = NormalCompletion;
 // block: { <- location of .enter
 // } <- location of .exit
 //
+// Creation of these generally is coupled with some form of a join.
+//
 class BlockCompletion {
   /*::
     type: string;
@@ -103,6 +107,17 @@ class BlockCompletion {
   }
 }
 exports.BlockCompletion = BlockCompletion;
+
+// This represents a break point jumping to a different block.
+// 
+// For example:
+//
+// block: {
+//   break block;
+// } <- location of .join
+//
+// Creation of these generally is coupled with some form of a join.
+//
 class BreakCompletion {
   /*::
     type: string;
@@ -117,6 +132,18 @@ class BreakCompletion {
   }
 }
 exports.BreakCompletion = BreakCompletion;
+
+// This represents a jump based upon the last value of the block.
+// 
+// For example:
+//
+// if (1) { <- location of .consequent
+// }
+// else { <- location of .alternate
+// }
+//
+// Creation of these generally is coupled with some form of a join.
+//
 class BranchCompletion {
   /*::
     type: string;

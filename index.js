@@ -52,25 +52,18 @@ const handlers = {
         path
       );
       path.skipKey('test');
-      const alternate = path.node.alternate ? path.get('alternate') : null;
       const consequent = path.get('consequent');
-      //console.log(consequent.node.type)
-      const join = makeBlock(alternate || consequent, 'end');
+      const alternate = path.node.alternate ? path.get('alternate') : null;
       const consequentBlock = makeBlock(consequent, 'start', 'truthy_');
-      if (alternate) {
-        alternateBlock = makeBlock(alternate, 'end', 'falsey_');
-      }
-      else {
-        alternateBlock = join;
-      }
-      const branch = new BranchCompletion(consequentBlock, alternateBlock);
-      builder.currentBlock.completion = branch;
-      builder.setJoin(path, join);
+      const forkBlock = builder.currentBlock;
       builder.currentBlock = consequentBlock;
       traverse(
         t.program([
           consequent.isExpression() ?
-          t.expressionStatement(consequent.node) : consequent.node
+            t.blockStatement(
+              t.expressionStatement(consequent.node)
+            ) :
+            consequent.node
         ]),
         handlers,
         path.scope,
@@ -78,12 +71,18 @@ const handlers = {
         path
       );
       path.skipKey('consequent');
+      // always join from Block
+      const join = builder.currentBlock;
       if (alternate) {
+        const alternateBlock = makeBlock(alternate, 'end', 'falsey_');
         builder.currentBlock = alternateBlock;
         traverse(
           t.program([
             alternate.isExpression() ?
-            t.expressionStatement(alternate.node) : alternate.node
+              t.blockStatement(
+                t.expressionStatement(alternate.node)
+              ) :
+              alternate.node
           ]),
           handlers,
           path.scope,
@@ -91,8 +90,17 @@ const handlers = {
           path
         );
         path.skipKey('alternate');
+        // always NormalCompletion
+        builder.currentBlock.completion = new NormalCompletion(join);
+        forkBlock.completion = new BranchCompletion(consequentBlock, alternateBlock);
+        builder.currentBlock = join;
+      }
+      else {
+        forkBlock.completion = new BranchCompletion(consequentBlock, join);
+        builder.currentBlock = join;
       }
       builder.setHandled(path);
+      builder.currentBlock = join;
     }
   },
   BlockStatement: {
