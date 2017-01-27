@@ -36,9 +36,7 @@ const subtraversal = (path) => {
     Object.assign(t.program([
       path.isStatement() ?
         path.node :
-        Object.assign(t.blockStatement([
-            Object.assign(t.expressionStatement(path.node), {loc:path.node.loc})
-          ]), {loc:path.node.loc})
+        Object.assign(t.expressionStatement(path.node), {loc:path.node.loc})
     ]), {loc:path.node.loc})
     ),
     handlers,
