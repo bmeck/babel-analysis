@@ -8,13 +8,11 @@ class CFGBuilder {
     this.nodeLabels = new WeakMap;
     this.labelCompletions = new Map;
     this.loopCompletions = new WeakMap;
-    this.joinBlocks = new WeakMap;
     this.handled = new Set;
     this.unhandled = new Set;
     this.unreachable = new Map;
   }
   disposePath(path) {
-    this.disposeJoin(path);
     this.disposeLoop(path);
     this.disposeLabel(path);
   }
@@ -36,15 +34,7 @@ class CFGBuilder {
       this.loopCompletions.delete(path.node);
     }
   }
-
-  disposeJoin(path) {
-    if (this.joinBlocks.has(path.node) && !this.currentBlock.completion) {
-      const exit = this.joinBlocks.get(path.node);
-      this.currentBlock.completion = new NormalCompletion(exit);
-      this.currentBlock = exit;
-    }
-  }
-
+  
   setLabel(name, node, completion) {
     name = `${name}`;
     if (this.labelCompletions.has(name)) {
@@ -76,27 +66,6 @@ class CFGBuilder {
 
   setLoop(path, completion) {
     this.loopCompletions.set(path.node, completion);
-  }
-
-  setJoin(path, exit) {
-    if (this.joinBlocks.has(path.node)) {
-      throw 'Already has node';
-    }
-    this.joinBlocks.set(path.node, exit);
-  }
-
-  parentJoin(path) {
-    const original = path;
-    path = path.parentPath;
-    while (path && !this.joinBlocks.has(path.node)) {
-      path = path.parentPath;
-    }
-    if (path) {
-      return this.joinBlocks.get(path.node);
-    }
-    else {
-      return this.exit;
-    }
   }
 
   setHandled(path) {

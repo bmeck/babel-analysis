@@ -10,7 +10,7 @@ const Scope = require('babel-traverse').Scope;
 const {
   Block,
   NormalCompletion,
-  BlockCompletion,
+  MarkerCompletion,
   BranchCompletion,
   BreakCompletion,
 } = require('./Block');
@@ -30,6 +30,24 @@ const inExpressionPosition = (path) => {
   return false;
 }
 const builder = new CFGBuilder(Object.assign(new Block, {name: 'root'}));
+const subtraversal = (path) => {
+  traverse(
+    t.file(
+    Object.assign(t.program([
+      path.isStatement() ?
+        path.node :
+        Object.assign(t.blockStatement([
+            Object.assign(t.expressionStatement(path.node), {loc:path.node.loc})
+          ]), {loc:path.node.loc})
+    ]), {loc:path.node.loc})
+    ),
+    handlers,
+    path.scope,
+    path.state,
+    path
+  );
+}
+const BLOCK_STACK = [];
 const handlers = {
   LabeledStatement: {
     enter(path) {
@@ -41,54 +59,50 @@ const handlers = {
       builder.setHandled(path);
     }
   },
+  WhileStatement: {
+    enter(path) {
+      path.skipKey('test');
+      path.skipKey('body');
+      const whileBlock = builder.currentBlock;
+      const testBlock = makeBlock(path, 'start', 'while_test_');
+      const joinBlock = makeBlock(path, 'end', 'while_join_');
+      whileBlock.completion = new MarkerCompletion(testBlock);
+      builder.currentBlock = testBlock;
+      const test = path.get('test');
+      subtraversal(test);
+      const testJoinBlock = builder.currentBlock;
+      const whileBodyBlock = makeBlock(test, 'end', 'while_body_');
+      testJoinBlock.completion = new BranchCompletion(whileBodyBlock, joinBlock);
+      if (path.parentPath.isLabeledStatement()) {
+        builder.setHandled(path.parentPath);
+        const name = path.parent.label.name;
+        builder.setLabel(name, path.node, whileBlock.completion);
+      }
+      builder.setLoop(path, whileBlock.completion);
+      builder.currentBlock = whileBodyBlock;
+      subtraversal(path.get('body'));
+      builder.currentBlock.completion = new NormalCompletion(testBlock);
+      builder.currentBlock = joinBlock;
+    }
+  },
   IfStatement: {
     enter(path) {
       // YOLO
-      traverse(
-        t.ExpressionStatement(path.get('test').node),
-        handlers,
-        path.scope,
-        path.state,
-        path
-      );
+      subtraversal(path.get('test'));
       path.skipKey('test');
       const consequent = path.get('consequent');
       const alternate = path.node.alternate ? path.get('alternate') : null;
       const consequentBlock = makeBlock(consequent, 'start', 'truthy_');
       const forkBlock = builder.currentBlock;
       builder.currentBlock = consequentBlock;
-      traverse(
-        t.program([
-          consequent.isExpression() ?
-            t.blockStatement(
-              t.expressionStatement(consequent.node)
-            ) :
-            consequent.node
-        ]),
-        handlers,
-        path.scope,
-        path.state,
-        path
-      );
+      subtraversal(consequent);
       path.skipKey('consequent');
       // always join from Block
       const join = builder.currentBlock;
       if (alternate) {
         const alternateBlock = makeBlock(alternate, 'end', 'falsey_');
         builder.currentBlock = alternateBlock;
-        traverse(
-          t.program([
-            alternate.isExpression() ?
-              t.blockStatement(
-                t.expressionStatement(alternate.node)
-              ) :
-              alternate.node
-          ]),
-          handlers,
-          path.scope,
-          path.state,
-          path
-        );
+        subtraversal(alternate);
         path.skipKey('alternate');
         // always NormalCompletion
         builder.currentBlock.completion = new NormalCompletion(join);
@@ -103,22 +117,31 @@ const handlers = {
       builder.currentBlock = join;
     }
   },
+  EmptyStatement: {
+    enter(path) {
+      builder.setHandled(path);
+    },
+  },
   BlockStatement: {
     enter(path) {
       builder.setHandled(path);
-      const completion = new BlockCompletion(
-        makeBlock(path, 'start'),
-        makeBlock(path, 'end')
-      );
-      builder.currentBlock.completion = completion;
+      const bodyBlock = makeBlock(path, 'start');
+      const joinBlock = makeBlock(path, 'end');
+      BLOCK_STACK.push({exit: joinBlock});
       if (path.parentPath.isLabeledStatement()) {
         builder.setHandled(path.parentPath);
         const name = path.parent.label.name;
+        const completion = {exit: joinBlock};
         builder.setLabel(name, path.node, completion);
+        builder.currentBlock.completion = new MarkerCompletion(bodyBlock);;
+        builder.currentBlock = bodyBlock;
       }
-      builder.setJoin(path, completion.exit);
-      builder.currentBlock = completion.enter;
     },
+    exit(path) {
+      const {exit} = BLOCK_STACK.pop();
+      builder.currentBlock.completion = new NormalCompletion(exit);
+      builder.currentBlock = exit;
+    }
   },
   MemberExpression: {
     exit(path) {
@@ -199,7 +222,7 @@ const handlers = {
       builder.currentBlock.steps.add({
         type: path.node.type,
         operator: path.node.operator,
-        dump: `${path.node.type} ${path.node.operator}`
+        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
       });
     }
   },
@@ -209,7 +232,17 @@ const handlers = {
       builder.currentBlock.steps.add({
         type: path.node.type,
         operator: path.node.operator,
-        dump: `${path.node.type} ${path.node.operator}`
+        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
+      });
+    }
+  },
+  LogicalExpression: {
+    exit(path) {
+      builder.setHandled(path);
+      builder.currentBlock.steps.add({
+        type: path.node.type,
+        operator: path.node.operator,
+        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
       });
     }
   },
@@ -243,6 +276,31 @@ const handlers = {
         throw `not in a loop`;
       }
       next = completion.exit;
+    }
+    builder.currentBlock.completion = new BreakCompletion(next);
+    // unreachable
+    const unreachable = makeBlock(path, 'end', '(unreachable) ');
+    builder.addUnreachable(builder.currentBlock, unreachable);
+    builder.currentBlock = unreachable;
+  },
+  ContinueStatement(path) {
+    builder.setHandled(path);
+    let next;
+    if (path.node.label !== null) {
+      path.skipKey('label');
+      const name = path.node.label.name;
+      const completion = builder.getLabelCompletion(name);
+      if (!completion) {
+        throw `unknown label ${name}`;
+      }
+      next = completion.enter;
+    }
+    else {
+      const completion = builder.getParentLoopCompletion(path);
+      if (!completion) {
+        throw `not in a loop`;
+      }
+      next = completion.enter;
     }
     builder.currentBlock.completion = new BreakCompletion(next);
     // unreachable

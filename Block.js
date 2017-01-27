@@ -75,6 +75,7 @@ class NormalCompletion {
   }
   dump(origin, visited) {
     console.log(`${origin.name} -> ${this.join.name} [label=normal]`);
+    this.join.dump(visited);
   }
 }
 exports.NormalCompletion = NormalCompletion;
@@ -83,30 +84,26 @@ exports.NormalCompletion = NormalCompletion;
 // 
 // For example, the entry/exit of a BlockStatement ala:
 //
-// block: { <- location of .enter
-// } <- location of .exit
+// while(true) { <- location of entry marker , can be used to break/continue
+// }
 //
 // Creation of these generally is coupled with some form of a join.
 //
-class BlockCompletion {
+class MarkerCompletion {
   /*::
     type: string;
-    enter: Block;
-    exit: Block;
+    next: Block;
   */
-  constructor(enter/*: Block*/, exit/*: Block*/) {
-    this.type = 'BLOCK';
-    this.enter = enter;
-    this.exit = exit;
+  constructor(next/*: Block*/) {
+    this.type = 'MARKER';
+    this.next = next;
   }
   dump(origin, visited) {
-    console.log(`${origin.name} -> ${this.enter.name} [label=enter]`);
-    this.enter.dump(visited);
-    // console.log(`${origin.name} - ${this.exit.name} [label=exit]`);
-    this.exit.dump(visited);
+    console.log(`${origin.name} -> ${this.next.name} [label=mark]`);
+    this.next.dump(visited);
   }
 }
-exports.BlockCompletion = BlockCompletion;
+exports.MarkerCompletion = MarkerCompletion;
 
 // This represents a break point jumping to a different block.
 // 
@@ -129,6 +126,7 @@ class BreakCompletion {
   }
   dump(origin, visited) {
     console.log(`${origin.name} -> ${this.join.name} [label=break]`);
+    this.join.dump(visited);
   }
 }
 exports.BreakCompletion = BreakCompletion;
@@ -151,7 +149,7 @@ class BranchCompletion {
     alternate: Block;
   */
   constructor(consequent/*: Block*/,alternate/*: Block*/) {
-    this.type = 'BREAK';
+    this.type = 'BRANCH';
     this.consequent = consequent;
     this.alternate = alternate;
   }
