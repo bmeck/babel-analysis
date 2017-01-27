@@ -131,6 +131,22 @@ class BreakCompletion {
 }
 exports.BreakCompletion = BreakCompletion;
 
+class ContinueCompletion {
+  /*::
+    type: string;
+    join: Block;
+  */
+  constructor(join/*: Block*/) {
+    this.type = 'BREAK';
+    this.join = join;
+  }
+  dump(origin, visited) {
+    console.log(`${origin.name} -> ${this.join.name} [label=continue]`);
+    this.join.dump(visited);
+  }
+}
+exports.ContinueCompletion = ContinueCompletion;
+
 // This represents a jump based upon the last value of the block.
 // 
 // For example:

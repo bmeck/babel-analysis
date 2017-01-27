@@ -13,6 +13,7 @@ const {
   MarkerCompletion,
   BranchCompletion,
   BreakCompletion,
+  ContinueCompletion,
 } = require('./Block');
 const CFGBuilder = require('./CFGBuilder');
 const makeBlock = (path, loc = 'start', prefix = '') => {
@@ -76,7 +77,10 @@ const handlers = {
         const name = path.parent.label.name;
         builder.setLabel(name, path.node, whileBlock.completion);
       }
-      builder.setLoop(path, whileBlock.completion);
+      builder.setLoop(path, {
+        enter: testBlock,
+        exit: joinBlock,
+      });
       builder.currentBlock = whileBodyBlock;
       subtraversal(path.get('body'));
       builder.currentBlock.completion = new NormalCompletion(testBlock);
@@ -300,7 +304,7 @@ const handlers = {
       }
       next = completion.enter;
     }
-    builder.currentBlock.completion = new BreakCompletion(next);
+    builder.currentBlock.completion = new ContinueCompletion(next);
     // unreachable
     const unreachable = makeBlock(path, 'end', '(unreachable) ');
     builder.addUnreachable(builder.currentBlock, unreachable);
