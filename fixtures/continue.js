@@ -1,7 +1,9 @@
 1
 loop: while (true) {
   2
-  continue;
+  while (false) {
+    continue;
+  }
   3
 }
 4

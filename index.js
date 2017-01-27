@@ -14,7 +14,7 @@ const {
   BranchCompletion,
   BreakCompletion,
   ContinueCompletion,
-} = require('./Block');
+} = require('./Block/block');
 const CFGBuilder = require('./CFGBuilder');
 const makeBlock = (path, loc = 'start', prefix = '') => {
   const block = new Block;
@@ -30,7 +30,10 @@ const inExpressionPosition = (path) => {
   if (parentPath.isIfStatement() && path.node === parentPath.node.test) return true;
   return false;
 }
-const builder = new CFGBuilder(Object.assign(new Block, {name: 'root'}));
+const builder = new CFGBuilder(
+  Object.assign(new Block, {name: 'root'}),
+  Object.assign(new Block, {name: 'end'})
+);
 const subtraversal = (path) => {
   traverse(
     t.file(
@@ -56,14 +59,18 @@ const handlers = {
   Program: {
     enter(path) {
       const entryBlock = makeBlock(path);
-      builder.currentBlock.completion = new MarkerCompletion(entryBlock);
+      const programBlock = builder.currentBlock;
+      programBlock.setCompletion(
+        new MarkerCompletion(programBlock, entryBlock)
+      );
       builder.currentBlock = entryBlock;
       builder.setHandled(path);
     },
     exit(path) {
-      builder.currentBlock.completion = new NormalCompletion(Object.assign(
-        new Block, {name: 'end'}
-      ));
+      const programJoinBlock = builder.currentBlock;
+      programJoinBlock.setCompletion(
+        new NormalCompletion(programJoinBlock, builder.exit)
+      );
     }
   },
   WhileStatement: {
@@ -73,13 +80,13 @@ const handlers = {
       const whileBlock = builder.currentBlock;
       const testBlock = makeBlock(path, 'start', 'while_test_');
       const joinBlock = makeBlock(path, 'end', 'while_join_');
-      whileBlock.completion = new MarkerCompletion(testBlock);
+      whileBlock.setCompletion(new MarkerCompletion(whileBlock, testBlock));
       builder.currentBlock = testBlock;
       const test = path.get('test');
       subtraversal(test);
       const testJoinBlock = builder.currentBlock;
       const whileBodyBlock = makeBlock(test, 'end', 'while_body_');
-      testJoinBlock.completion = new BranchCompletion(whileBodyBlock, joinBlock);
+      testJoinBlock.setCompletion(new BranchCompletion(testJoinBlock, whileBodyBlock, joinBlock));
       if (path.parentPath.isLabeledStatement()) {
         builder.setHandled(path.parentPath);
         const name = path.parent.label.name;
@@ -91,7 +98,8 @@ const handlers = {
       });
       builder.currentBlock = whileBodyBlock;
       subtraversal(path.get('body'));
-      builder.currentBlock.completion = new NormalCompletion(testBlock);
+      const bodyJoinBlock = builder.currentBlock;
+      bodyJoinBlock.setCompletion(new NormalCompletion(bodyJoinBlock, testBlock));
       builder.currentBlock = joinBlock;
     }
   },
@@ -115,12 +123,13 @@ const handlers = {
         subtraversal(alternate);
         path.skipKey('alternate');
         // always NormalCompletion
-        builder.currentBlock.completion = new NormalCompletion(join);
-        forkBlock.completion = new BranchCompletion(consequentBlock, alternateBlock);
+        const alternateJoinBlock = builder.currentBlock;
+        alternateJoinBlock.setCompletion(new NormalCompletion(alternateJoinBlock, join));
+        forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, alternateBlock));
         builder.currentBlock = join;
       }
       else {
-        forkBlock.completion = new BranchCompletion(consequentBlock, join);
+        forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, join));
         builder.currentBlock = join;
       }
       builder.setHandled(path);
@@ -143,13 +152,15 @@ const handlers = {
         const name = path.parent.label.name;
         const completion = {exit: joinBlock};
         builder.setLabel(name, path.node, completion);
-        builder.currentBlock.completion = new MarkerCompletion(bodyBlock);;
+        const labelBlock = builder.currentBlock;
+        labelBlock.setCompletion(new MarkerCompletion(labelBlock, bodyBlock));
         builder.currentBlock = bodyBlock;
       }
     },
     exit(path) {
       const {exit} = BLOCK_STACK.pop();
-      builder.currentBlock.completion = new NormalCompletion(exit);
+      const bodyBlock = builder.currentBlock;
+      bodyBlock.setCompletion(new NormalCompletion(bodyBlock, exit));
       builder.currentBlock = exit;
     }
   },
@@ -287,7 +298,8 @@ const handlers = {
       }
       next = completion.exit;
     }
-    builder.currentBlock.completion = new BreakCompletion(next);
+    const bodyBlock = builder.currentBlock;
+    bodyBlock.setCompletion(new BreakCompletion(bodyBlock, next));
     // unreachable
     const unreachable = makeBlock(path, 'end', 'unreachable_');
     builder.addUnreachable(builder.currentBlock, unreachable);
@@ -312,7 +324,8 @@ const handlers = {
       }
       next = completion.enter;
     }
-    builder.currentBlock.completion = new ContinueCompletion(next);
+    const bodyBlock = builder.currentBlock;
+    bodyBlock.setCompletion(new ContinueCompletion(bodyBlock, next));
     // unreachable
     const unreachable = makeBlock(path, 'end', 'unreachable_');
     builder.addUnreachable(builder.currentBlock, unreachable);
@@ -328,19 +341,4 @@ const handlers = {
 }
 traverse(ast, handlers);
 
-if (builder.unhandled.size) {
-  for (const unhandled of builder.unhandled) {
-    console.log(`// unhandled ${unhandled.type} ${JSON.stringify(unhandled.loc.start)}`);
-  }
-}
-console.log('digraph {');
-console.log('node [shape=record]');
-const visited = new WeakSet;
-builder.root.dump(visited);
-for (let [origin, unreachable] of builder.unreachable) {
-  console.log(
-    `${origin.name} -> ${unreachable.name} [label=unreachable,style=dotted]`
-  )
-  unreachable.dump(visited);
-}
-console.log('}');
+require('./printer/DOT').dump(builder);

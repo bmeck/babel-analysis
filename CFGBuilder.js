@@ -1,5 +1,5 @@
 'use strict';
-const {Block,NormalCompletion} = require('./Block');
+const {Block,NormalCompletion} = require('./Block/block');
 class CFGBuilder {
   constructor(root = new Block, exit = new Block) {
     this.root = root;
