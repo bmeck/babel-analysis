@@ -55,7 +55,15 @@ const handlers = {
   },
   Program: {
     enter(path) {
+      const entryBlock = makeBlock(path);
+      builder.currentBlock.completion = new MarkerCompletion(entryBlock);
+      builder.currentBlock = entryBlock;
       builder.setHandled(path);
+    },
+    exit(path) {
+      builder.currentBlock.completion = new NormalCompletion(Object.assign(
+        new Block, {name: 'end'}
+      ));
     }
   },
   WhileStatement: {
@@ -281,7 +289,7 @@ const handlers = {
     }
     builder.currentBlock.completion = new BreakCompletion(next);
     // unreachable
-    const unreachable = makeBlock(path, 'end', '(unreachable) ');
+    const unreachable = makeBlock(path, 'end', 'unreachable_');
     builder.addUnreachable(builder.currentBlock, unreachable);
     builder.currentBlock = unreachable;
   },
@@ -306,7 +314,7 @@ const handlers = {
     }
     builder.currentBlock.completion = new ContinueCompletion(next);
     // unreachable
-    const unreachable = makeBlock(path, 'end', '(unreachable) ');
+    const unreachable = makeBlock(path, 'end', 'unreachable_');
     builder.addUnreachable(builder.currentBlock, unreachable);
     builder.currentBlock = unreachable;
   },
@@ -327,5 +335,12 @@ if (builder.unhandled.size) {
 }
 console.log('digraph {');
 console.log('node [shape=record]');
-builder.root.dump();
+const visited = new WeakSet;
+builder.root.dump(visited);
+for (let [origin, unreachable] of builder.unreachable) {
+  console.log(
+    `${origin.name} -> ${unreachable.name} [label=unreachable,style=dotted]`
+  )
+  unreachable.dump(visited);
+}
 console.log('}');

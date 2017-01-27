@@ -35,10 +35,8 @@ class Block {
   */
   constructor() {
     this.name = "";
-    this.phis = new Map;
     this.steps = new Set;
     this.completion = null;
-    this.abrupt = null;
   }
 
   // Should dump node and connections to DOT format. This is for debugging.
@@ -56,6 +54,13 @@ class Block {
   }
 }
 exports.Block = Block;
+
+class Scope {
+  constructor(root = new Block) {
+    this.bindings = new Map();
+    this.root = root;
+  }
+}
 
 // This represents an implicit control flow.
 // 
