@@ -14,7 +14,7 @@ const {
   BranchCompletion,
   BreakCompletion,
   ContinueCompletion,
-} = require('./Block/block');
+} = require('./block/Block');
 const CFGBuilder = require('./CFGBuilder');
 const makeBlock = (path, loc = 'start', prefix = '') => {
   const block = new Block;
