@@ -7,7 +7,7 @@ const {
   BranchCompletion,
   BreakCompletion,
   ContinueCompletion,
-} = require('../Block/block');
+} = require('../block/Block');
 
 exports.dump = (builder) => {
   const visited/*: WeakSet<Block>*/ = new WeakSet;
