@@ -8,6 +8,7 @@ const t = require('babel-types');
 const traverse = require('babel-traverse').default
 const Scope = require('babel-traverse').Scope;
 const {Step} = require('./step/Step');
+const {Phi} = require('./step/Phi');
 const {
   Block,
   NormalCompletion,
@@ -104,11 +105,9 @@ const handlers = {
         const alternateJoinBlock = builder.currentBlock;
         alternateJoinBlock.setCompletion(new NormalCompletion(alternateJoinBlock, join));
         forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, alternateBlock));
-        builder.currentBlock = join;
       }
       else {
         forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, join));
-        builder.currentBlock = join;
       }
       builder.setHandled(path);
       builder.currentBlock = join;
@@ -163,6 +162,41 @@ const handlers = {
     exit(path) {
       builder.currentBlock.steps.push(new Step(`Identifier#${path.node.name}`));
     }
+  },
+  ConditionalExpression: {
+    enter(path) {
+      // YOLO
+      subtraversal(path.get('test'));
+      path.skipKey('test');
+      path.skipKey('consequent');
+      path.skipKey('alternate');
+      const joinBlock = makeBlock(path, 'end', 'join_');
+      const consequent = path.get('consequent');
+      const alternate = path.get('alternate');
+      const consequentBlock = makeBlock(consequent, 'start', 'truthy_');
+      const alternateBlock = makeBlock(alternate, 'end', 'falsey_');
+      const forkBlock = builder.currentBlock;
+      builder.currentBlock = consequentBlock;
+      subtraversal(consequent);
+      // always join from Block
+      const consequentJoinBlock = builder.currentBlock;
+      consequentJoinBlock.setCompletion(new NormalCompletion(consequentJoinBlock, joinBlock));
+      builder.currentBlock = alternateBlock;
+      subtraversal(alternate);
+      // always NormalCompletion
+      const alternateJoinBlock = builder.currentBlock;
+      alternateJoinBlock.setCompletion(new NormalCompletion(alternateJoinBlock, joinBlock));
+      forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, alternateBlock));
+      builder.setHandled(path);
+      builder.currentBlock = joinBlock;
+      joinBlock.steps.push(new Phi([
+        [consequentBlock, consequentBlock.steps.length - 1],
+        [alternateJoinBlock, alternateJoinBlock.steps.length - 1],
+      ]))
+    }
+  },
+  Scope: {
+    exit(path) {debugger;}
   },
   UnaryExpression: {
     enter(path) {
