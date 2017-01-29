@@ -149,7 +149,13 @@ const handlers = {
   },
   'NumericLiteral|BooleanLiteral|StringLiteral': {
     exit(path) {
-      const constant = builder.getConstant(path.node.type, path.node.value);
+      const constant = builder.getConstant(typeof path.node.value, path.node.value);
+      builder.currentBlock.steps.push(constant);
+    }
+  },
+  'NullLiteral': {
+    exit(path) {
+      const constant = builder.getConstant('null', null);
       builder.currentBlock.steps.push(constant);
     }
   },
@@ -163,7 +169,7 @@ const handlers = {
       const exprBlock = builder.currentBlock;
       const valueStep = exprBlock.steps[exprBlock.steps.length -1];
       builder.currentBlock.steps.push(new Step(
-        path.node.type, [valueStep]
+        path.node.operator, [valueStep]
       ));
     }
   },
@@ -183,7 +189,27 @@ const handlers = {
       const rightBlock = builder.currentBlock;
       const rightValueStep = rightBlock.steps[rightBlock.steps.length -1];
       builder.currentBlock.steps.push(new Step(
-        path.node.type, [leftValueStep, rightValueStep]
+        path.node.operator, [leftValueStep, rightValueStep]
+      ));
+    }
+  },
+  MemberExpression: {
+    enter(path) {
+      path.skipKey('object');
+      path.skipKey('property');
+      builder.setHandled(path);
+      const left = path.get('object');
+      builder.setHandled(left);
+      subtraversal(left);
+      const leftBlock = builder.currentBlock;
+      const leftValueStep = leftBlock.steps[leftBlock.steps.length -1];
+      const right = path.get('property');
+      builder.setHandled(right);
+      subtraversal(right);
+      const rightBlock = builder.currentBlock;
+      const rightValueStep = rightBlock.steps[rightBlock.steps.length -1];
+      builder.currentBlock.steps.push(new Step(
+        path.node.computed ? '[ ]' : '.', [leftValueStep, rightValueStep]
       ));
     }
   },

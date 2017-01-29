@@ -95,16 +95,15 @@ exports.dump = (builder/*: CFGBuilder */) => {
   console.log('node [shape=box]');
   let table = '';
   for (let [type, values] of builder.constants.entries()) {
-    table += `| ${type}`;
+    table += `<tr><td bgcolor="#cccccc">${type}</td></tr>`;
     for (let [value, constant] of values.entries()) {
       const port = uid++;
       setId(constant, `constants:${port}`);
-      table += `| <${port}> ${value}`;
+      table += `<tr><td port="${port}">${value}</td></tr>`;
     }
-    table += ' ';
   }
   if (table != '') {
-    console.log(`constants [shape=record,label="{CONSTANTS${table}}"]`)
+    console.log(`constants [label=<<table><tr><td>CONSTANTS</td></tr>${table}</table>>]`)
   }
   if (builder.unhandled.size) {
     for (const unhandled of builder.unhandled) {
