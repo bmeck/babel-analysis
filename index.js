@@ -19,7 +19,7 @@ const {
 const CFGBuilder = require('./CFGBuilder');
 const makeBlock = (path, loc = 'start', prefix = '') => {
   const block = new Block;
-  block.name = `${prefix}${path.node.loc.filename || ''}_${path.node.loc[loc].line}_${path.node.loc[loc].column}`;
+  block.name = `${prefix}${path.node.loc.filename || ''}#${path.node.loc[loc].line}:${path.node.loc[loc].column}`;
   return block;
 }
 const builder = new CFGBuilder(
@@ -49,19 +49,20 @@ const handlers = {
       path.skipKey('label');
     }
   },
-  WhileStatement: {
+  'DoWhileStatement|WhileStatement': {
     enter(path) {
       path.skipKey('test');
       path.skipKey('body');
       const whileBlock = builder.currentBlock;
       const testBlock = makeBlock(path, 'start', 'while_test_');
-      const joinBlock = makeBlock(path, 'end', 'while_join_');
-      whileBlock.setCompletion(new MarkerCompletion(whileBlock, testBlock));
-      builder.currentBlock = testBlock;
       const test = path.get('test');
+      const whileBodyBlock = makeBlock(test, 'end', 'while_body_');
+      const joinBlock = makeBlock(path, 'end', 'while_join_');
+      const firstBlock = path.isWhileStatement() ? testBlock : whileBodyBlock;
+      whileBlock.setCompletion(new MarkerCompletion(whileBlock, firstBlock));
+      builder.currentBlock = testBlock;
       subtraversal(test);
       const testJoinBlock = builder.currentBlock;
-      const whileBodyBlock = makeBlock(test, 'end', 'while_body_');
       testJoinBlock.setCompletion(new BranchCompletion(testJoinBlock, whileBodyBlock, joinBlock));
       if (path.parentPath.isLabeledStatement()) {
         builder.setHandled(path.parentPath);
@@ -76,6 +77,7 @@ const handlers = {
       subtraversal(path.get('body'));
       const bodyJoinBlock = builder.currentBlock;
       bodyJoinBlock.setCompletion(new NormalCompletion(bodyJoinBlock, testBlock));
+      builder.setHandled(path);
       builder.currentBlock = joinBlock;
     }
   },
@@ -112,7 +114,7 @@ const handlers = {
       builder.currentBlock = join;
     }
   },
-  EmptyStatement: {
+  'EmptyStatement|DebuggerStatement': {
     enter(path) {
       builder.setHandled(path);
     },
@@ -145,7 +147,7 @@ const handlers = {
       builder.setHandled(path);
     }
   },
-  NumericLiteral: {
+  'NumericLiteral|BooleanLiteral|StringLiteral': {
     exit(path) {
       const constant = builder.getConstant(path.node.type, path.node.value);
       builder.currentBlock.steps.push(constant);

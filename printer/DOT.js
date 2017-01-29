@@ -50,6 +50,10 @@ exports.dump = (builder/*: CFGBuilder */) => {
           edges.push([`${step_node} -> $0 [label=${arg_i}]`,arg]);
         }
       }
+      else if (step instanceof Constant) {
+        console.log(`<tr><td port="${step_port}">${step.value}</td></tr>`);
+        edges.push([`${step_node} -> $0`, step]);
+      }
     }
     console.log(`</table>>]`);
     const completion = block.completion;
@@ -61,9 +65,10 @@ exports.dump = (builder/*: CFGBuilder */) => {
       return;
     }
     if (completion instanceof BranchCompletion) {
-      edges.push([`${id(block)} -> $0 [label=truthy]`, completion.consequent]);
+      const test_node = `${block_node}:${block.steps.length - 1}`
+      edges.push([`${test_node} -> $0 [label=truthy]`, completion.consequent]);
       traverse(completion.consequent);
-      edges.push([`${id(block)} -> $0 [label=falsey]`, completion.alternate]);
+      edges.push([`${test_node} -> $0 [label=falsey]`, completion.alternate]);
       traverse(completion.alternate);
     }
     else if (completion instanceof BreakCompletion) {
@@ -98,7 +103,9 @@ exports.dump = (builder/*: CFGBuilder */) => {
     }
     table += ' ';
   }
-  console.log(`constants [shape=record,rankdir=LR,label="{CONSTANTS${table}}"]`)
+  if (table != '') {
+    console.log(`constants [shape=record,label="{CONSTANTS${table}}"]`)
+  }
   if (builder.unhandled.size) {
     for (const unhandled of builder.unhandled) {
       console.log(`// unhandled ${unhandled.type} ${JSON.stringify(unhandled.loc.start)}`);
