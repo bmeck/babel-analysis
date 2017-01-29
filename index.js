@@ -1,4 +1,4 @@
-
+'use strict';
 const src = require('fs').readFileSync(process.argv[2]).toString();
 
 const ast = require('babylon').parse(src, {
@@ -249,9 +249,13 @@ const handlers = {
     }
   },
   Scope: {
+    // these should make their own graphs that only get tacked onto blocks
+    // this is due to them having a diff inheritance chain than blocks
+    // (lexical vs flow)
     exit(path) {debugger;}
   },
   UnaryExpression: {
+    // TODO: should delete be special cased? (ref vs value)
     enter(path) {
       path.skipKey('argument');
       builder.setHandled(path);
