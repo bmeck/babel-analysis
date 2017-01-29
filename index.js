@@ -84,19 +84,23 @@ const handlers = {
   },
   IfStatement: {
     enter(path) {
-      // YOLO
-      subtraversal(path.get('test'));
+      const test = path.get('test');
+      subtraversal(test);
       path.skipKey('test');
       const consequent = path.get('consequent');
       const alternate = path.node.alternate ? path.get('alternate') : null;
       const consequentBlock = makeBlock(consequent, 'start', 'truthy_');
       const forkBlock = builder.currentBlock;
+      builder.setHandled(path);
+      builder.setHandled(test);
+      builder.setHandled(consequent);
       builder.currentBlock = consequentBlock;
       subtraversal(consequent);
       path.skipKey('consequent');
       // always join from Block
       const join = builder.currentBlock;
       if (alternate) {
+        builder.setHandled(alternate);
         const alternateBlock = makeBlock(alternate, 'end', 'falsey_');
         builder.currentBlock = alternateBlock;
         subtraversal(alternate);
@@ -166,15 +170,16 @@ const handlers = {
   ConditionalExpression: {
     enter(path) {
       // YOLO
-      subtraversal(path.get('test'));
       path.skipKey('test');
       path.skipKey('consequent');
       path.skipKey('alternate');
       const joinBlock = makeBlock(path, 'end', 'join_');
+      const test = path.get('test');
       const consequent = path.get('consequent');
       const alternate = path.get('alternate');
       const consequentBlock = makeBlock(consequent, 'start', 'truthy_');
       const alternateBlock = makeBlock(alternate, 'end', 'falsey_');
+      subtraversal(test);
       const forkBlock = builder.currentBlock;
       builder.currentBlock = consequentBlock;
       subtraversal(consequent);
@@ -188,11 +193,59 @@ const handlers = {
       alternateJoinBlock.setCompletion(new NormalCompletion(alternateJoinBlock, joinBlock));
       forkBlock.setCompletion(new BranchCompletion(forkBlock, consequentBlock, alternateBlock));
       builder.setHandled(path);
+      builder.setHandled(test);
+      builder.setHandled(consequent);
+      builder.setHandled(alternate);
       builder.currentBlock = joinBlock;
       joinBlock.steps.push(new Phi([
         [consequentBlock, consequentBlock.steps.length - 1],
         [alternateJoinBlock, alternateJoinBlock.steps.length - 1],
       ]))
+    }
+  },
+  LogicalExpression: {
+    enter(path) {
+      path.skipKey('left');
+      path.skipKey('right');
+      const left = path.get('left');
+      const right = path.get('right');
+      builder.setHandled(path);
+      builder.setHandled(left);
+      builder.setHandled(right);
+      const rightBlock = makeBlock(right);
+      const joinBlock = makeBlock(path, 'end');
+      subtraversal(left);
+      const leftJoinBlock = builder.currentBlock;
+      if (path.node.operator === '&&') {
+        leftJoinBlock.setCompletion(new BranchCompletion(
+          leftJoinBlock, rightBlock, joinBlock));
+      }
+      else if (path.node.operator === '||') {
+        leftJoinBlock.setCompletion(new BranchCompletion(
+          leftJoinBlock, joinBlock, rightBlock));
+      }
+      else {
+        throw `unknown operator ${path.node.operator}`;
+      }
+      builder.currentBlock = rightBlock;
+      subtraversal(right);
+      const rightJoinBlock = builder.currentBlock;
+      if (path.node.operator === '&&') {
+        rightJoinBlock.setCompletion(new NormalCompletion(
+          rightJoinBlock, joinBlock));
+      }
+      else if (path.node.operator === '||') {
+        rightJoinBlock.setCompletion(new NormalCompletion(
+          rightJoinBlock, joinBlock));
+      }
+      else {
+        throw `unknown operator ${path.node.operator}`;
+      }
+      joinBlock.steps.push(new Phi([
+        [leftJoinBlock, leftJoinBlock.steps.length - 1],
+        [rightJoinBlock, rightJoinBlock.steps.length - 1],
+      ]))
+      builder.currentBlock = joinBlock;
     }
   },
   Scope: {
