@@ -1,10 +1,13 @@
 'use strict';
 const {Block,NormalCompletion} = require('./block/Block');
+const Constant = require('./step/Constant').Constant;
 class CFGBuilder {
   constructor(root = new Block, exit = new Block) {
     this.root = root;
     this.exit = exit;
     this.currentBlock = this.root;
+    // string type -> value -> Constant
+    this.constants = new Map;
     this.nodeLabels = new WeakMap;
     this.labelCompletions = new Map;
     this.loopCompletions = new WeakMap;
@@ -33,6 +36,21 @@ class CFGBuilder {
     if (this.loopCompletions.has(path.node)) {
       this.loopCompletions.delete(path.node);
     }
+  }
+
+  getConstant(type, value) {
+    if (typeof value === 'object' && value) {
+      throw Error(`value ${value} is not a primitive`);
+    }
+    if (!this.constants.has(type)) {
+      this.constants.set(type, new Map);
+    }
+    const values = this.constants.get(type);
+    if (!values.has(value)) {
+      const constant = new Constant(type, value);
+      values.set(value, constant);
+    }
+    return values.get(value);
   }
   
   setLabel(name, node, completion) {

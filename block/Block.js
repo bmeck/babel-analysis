@@ -19,6 +19,7 @@ exports.NormalCompletion = NormalCompletion;
     | ContinueCompletion
     | MarkerCompletion
     | NormalCompletion
+    | null
     ;
   *//*
   TODO
@@ -43,13 +44,13 @@ class Block {
   /*::
     name: string;
     phis: Map<string, Object>;
-    steps: Set<Step>;
-    completion: COMPLETION | null;
+    steps: Step[];
+    completion: COMPLETION;
     abrupt: Block | null;
   */
   constructor() {
     this.name = "";
-    this.steps = new Set();
+    this.steps = [];
     this.completion = null;
   }
 
@@ -57,7 +58,7 @@ class Block {
     //if (this.completion !== null) {
     //  throw Error('Already have completion');
     //}
-    if (completion.origin !== this) {
+    if (completion && completion.origin !== this) {
       throw Error('Completion does not originate with this block');
     }
     this.completion = completion;

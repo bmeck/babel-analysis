@@ -3,7 +3,7 @@
 class Step {
   /*::
     name: string;
-    args: Step[];
+    args: (Step|Node)[];
     consumers: Set<Step>;
   */
   constructor(name/*: string*/, args/*: Step[]*/) {

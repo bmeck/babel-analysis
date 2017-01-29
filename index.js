@@ -7,6 +7,7 @@ const ast = require('babylon').parse(src, {
 const t = require('babel-types');
 const traverse = require('babel-traverse').default
 const Scope = require('babel-traverse').Scope;
+const {Step} = require('./step/Step');
 const {
   Block,
   NormalCompletion,
@@ -20,15 +21,6 @@ const makeBlock = (path, loc = 'start', prefix = '') => {
   const block = new Block;
   block.name = `${prefix}${path.node.loc.filename || ''}_${path.node.loc[loc].line}_${path.node.loc[loc].column}`;
   return block;
-}
-const inExpressionPosition = (path) => {
-  const parentPath = path.parentPath;
-  if (parentPath.isExpression()) return true;
-  if (parentPath.isExpressionStatement()) return true;
-  if (parentPath.isProgram()) return true;
-  if (parentPath.isBlockStatement()) return true;
-  if (parentPath.isIfStatement() && path.node === parentPath.node.test) return true;
-  return false;
 }
 const builder = new CFGBuilder(
   Object.assign(new Block, {name: 'root'}),
@@ -51,26 +43,10 @@ const subtraversal = (path) => {
 }
 const BLOCK_STACK = [];
 const handlers = {
+  Program(path) {builder.setHandled(path);},
   LabeledStatement: {
     enter(path) {
       path.skipKey('label');
-    }
-  },
-  Program: {
-    enter(path) {
-      const entryBlock = makeBlock(path);
-      const programBlock = builder.currentBlock;
-      programBlock.setCompletion(
-        new MarkerCompletion(programBlock, entryBlock)
-      );
-      builder.currentBlock = entryBlock;
-      builder.setHandled(path);
-    },
-    exit(path) {
-      const programJoinBlock = builder.currentBlock;
-      programJoinBlock.setCompletion(
-        new NormalCompletion(programJoinBlock, builder.exit)
-      );
     }
   },
   WhileStatement: {
@@ -164,119 +140,49 @@ const handlers = {
       builder.currentBlock = exit;
     }
   },
-  MemberExpression: {
-    exit(path) {
-      builder.setHandled(path);
-      builder.currentBlock.steps.add({
-        type: path.node.type,
-        dump: `${path.node.type} []`
-      });
-    }
-  },
   ExpressionStatement: {
     enter(path) {
       builder.setHandled(path);
     }
   },
-  RegExpLiteral: {
-    exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          raw: path.node.extra.raw,
-          dump: `${path.node.type} ${path.node.extra.raw}`
-        });
-      }
-    }
-  },
   NumericLiteral: {
     exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          raw: path.node.extra.raw,
-          dump: `${path.node.type} ${path.node.extra.raw}`
-        });
-      }
-    }
-  },
-  BooleanLiteral: {
-    exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          value: path.node.value,
-          dump: `${path.node.type} ${path.node.value}`,
-        });
-      }
-    }
-  },
-  StringLiteral: {
-    exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          raw: path.node.extra.raw,
-          dump: `${path.node.type} ${path.node.extra.raw}`,
-        });
-      }
-    }
-  },
-  NullLiteral: {
-    exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          dump: `${path.node.type} null`
-        });
-      }
+      const constant = builder.getConstant(path.node.type, path.node.value);
+      builder.currentBlock.steps.push(constant);
     }
   },
   UnaryExpression: {
-    exit(path) {
+    enter(path) {
+      path.skipKey('argument');
       builder.setHandled(path);
-      builder.currentBlock.steps.add({
-        type: path.node.type,
-        operator: path.node.operator,
-        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
-      });
+      const argument = path.get('argument');
+      builder.setHandled(argument);
+      subtraversal(argument);
+      const exprBlock = builder.currentBlock;
+      const valueStep = exprBlock.steps[exprBlock.steps.length -1];
+      builder.currentBlock.steps.push(new Step(
+        path.node.type, [valueStep]
+      ));
     }
   },
   BinaryExpression: {
-    exit(path) {
+    enter(path) {
+      path.skipKey('left');
+      path.skipKey('right');
       builder.setHandled(path);
-      builder.currentBlock.steps.add({
-        type: path.node.type,
-        operator: path.node.operator,
-        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
-      });
-    }
-  },
-  LogicalExpression: {
-    exit(path) {
-      builder.setHandled(path);
-      builder.currentBlock.steps.add({
-        type: path.node.type,
-        operator: path.node.operator,
-        dump: `${path.node.type} ${path.node.operator}`.replace(/\W/g, '\\$&'),
-      });
-    }
-  },
-  Identifier: {
-    exit(path) {
-      if (inExpressionPosition(path)) {
-        builder.setHandled(path);
-        builder.currentBlock.steps.add({
-          type: path.node.type,
-          name: path.node.name,
-          dump: `${path.node.type} ${path.node.name}`
-        });
-      }
+      const left = path.get('left');
+      builder.setHandled(left);
+      subtraversal(left);
+      const leftBlock = builder.currentBlock;
+      const leftValueStep = leftBlock.steps[leftBlock.steps.length -1];
+      const right = path.get('right');
+      builder.setHandled(right);
+      subtraversal(right);
+      const rightBlock = builder.currentBlock;
+      const rightValueStep = rightBlock.steps[rightBlock.steps.length -1];
+      builder.currentBlock.steps.push(new Step(
+        path.node.type, [leftValueStep, rightValueStep]
+      ));
     }
   },
   BreakStatement(path) {
@@ -339,6 +245,21 @@ const handlers = {
     builder.disposePath(path);
   },
 }
+setup_root: {
+  const entryBlock = makeBlock({node: ast});
+  const programBlock = builder.currentBlock;
+  programBlock.setCompletion(
+    new MarkerCompletion(programBlock, entryBlock)
+  );
+  builder.currentBlock = entryBlock;
+  builder.setHandled({node: ast});
+}
 traverse(ast, handlers);
+setup_exit: {
+  const programJoinBlock = builder.currentBlock;
+  programJoinBlock.setCompletion(
+    new NormalCompletion(programJoinBlock, builder.exit)
+  );
+}
 
 require('./printer/DOT').dump(builder);
