@@ -6,7 +6,7 @@ class Step {
     args: (Step|Node)[];
     consumers: Set<Step>;
   */
-  constructor(name/*: string*/, args/*: Step[]*/) {
+  constructor(name/*: string*/, args/*: Step[]*/ = []) {
     this.name = name;
     this.args = [...args];
     this.consumers = new Set();

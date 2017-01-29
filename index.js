@@ -159,6 +159,11 @@ const handlers = {
       builder.currentBlock.steps.push(constant);
     }
   },
+  'Identifier': {
+    exit(path) {
+      builder.currentBlock.steps.push(new Step(`Identifier#${path.node.name}`));
+    }
+  },
   UnaryExpression: {
     enter(path) {
       path.skipKey('argument');
