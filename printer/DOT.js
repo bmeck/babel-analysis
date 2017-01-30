@@ -3,7 +3,6 @@
 /*::
   var CFGBuilder = require('../CFGBuilder').CFGBuilder;
 */
-const {Constant} = require('../step/Constant');
 const {
   Block,
   NormalCompletion,
@@ -13,15 +12,21 @@ const {
   ContinueCompletion,
 } = require('../block/Block');
 const {Step} = require('../step/Step');
-const {Phi} = require('../step/Phi');
+const {Stub} = require('../step/Stub');
+const {Phi} = require('../step/ref/Phi');
+const {Constant} = require('../step/ref/Constant');
+const {Variable} = require('../step/ref/Variable');
 
 exports.dump = (builder/*: CFGBuilder */) => {
   const visited/*: WeakSet<Block>*/ = new WeakSet;
-  const ids/*: WeakMap<any, string>*/ = new WeakMap();
+  const ids/*: Map<any, string>*/ = new Map();
   let uid = 0;
   const setId = (thing, id = ++uid) => ids.set(thing, `${id}`);
   const hasId = (thing) => ids.has(thing);
   const id = (thing) => {
+    //if (thing instanceof Constant) {
+    //  thing = thing.value;
+    //}
     if (!hasId(thing)) {
       console.error(thing);
       throw new Error('thing does not have an id yet');
@@ -43,7 +48,7 @@ exports.dump = (builder/*: CFGBuilder */) => {
       let step = block.steps[i];
       let step_port = `${i}`
       let step_node = `${block_node}:${step_port}`;
-      if (step instanceof Step) {
+      if (step instanceof Stub) {
         setId(step, step_node);
         // console.log(`${id(block)} -> ${id(step)} [label="step ${++i}"]`)
         console.log(`<tr><td port="${step_port}">${step.name}</td></tr>`);
@@ -53,12 +58,13 @@ exports.dump = (builder/*: CFGBuilder */) => {
         }
       }
       else if (step instanceof Constant) {
-        console.log(`<tr><td port="${step_port}">${step.value}</td></tr>`);
-        edges.push([`${step_node} -> $0`, step]);
+        setId(step, step_node);
+        console.log(`<tr><td port="${step_port}">${JSON.stringify(step.value)}</td></tr>`);
+        edges.push([`${step_node} -> $0`, step.value]);
       }
       else if (step instanceof Phi) {
         setId(step, step_node);
-        console.log(`<tr><td port="${step_port}">&phi;</td></tr>`);
+        console.log(`<tr><td port="${step_port}">${step.name}</td></tr>`);
         for (let arg_i = 0; arg_i < step.args.length; arg_i++) {
           const [block,index] = step.args[arg_i];
           edges.push([`${step_node} -> $0:${index} [label=${arg_i}]`, block])
@@ -107,18 +113,7 @@ exports.dump = (builder/*: CFGBuilder */) => {
   }
   console.log('digraph {');
   console.log('node [shape=box]');
-  let table = '';
-  for (let [type, values] of builder.constants.entries()) {
-    table += `<tr><td bgcolor="#cccccc">${type}</td></tr>`;
-    for (let [value, constant] of values.entries()) {
-      const port = uid++;
-      setId(constant, `constants:${port}`);
-      table += `<tr><td port="${port}">${value}</td></tr>`;
-    }
-  }
-  if (table != '') {
-    console.log(`constants [label=<<table><tr><td>CONSTANTS</td></tr>${table}</table>>]`)
-  }
+  dumpVariablePool(() => ++uid, ids, builder.constants);
   if (builder.unhandled.size) {
     for (const unhandled of builder.unhandled) {
       console.log(`// unhandled ${unhandled.type} ${JSON.stringify(unhandled.loc.start)}`);
@@ -142,3 +137,17 @@ exports.dump = (builder/*: CFGBuilder */) => {
   }
   console.log('}');
 };
+
+function dumpVariablePool(getUID, ids, pool) {
+  let table = '';
+  const poolId = getUID();
+  ids.set(pool, `${poolId}`);
+  for (let [variableName, binding] of pool.entries()) {
+    const port = getUID();
+    ids.set(variableName, `${poolId}:${port}`);
+    table += `<tr><td port="${port}">${variableName}</td></tr>`;
+  }
+  if (table != '') {
+    console.log(`${poolId} [label=<<table><tr><td>${pool.name}</td></tr>${table}</table>>]`)
+  }
+}

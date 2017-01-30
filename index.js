@@ -7,8 +7,8 @@ const ast = require('babylon').parse(src, {
 const t = require('babel-types');
 const traverse = require('babel-traverse').default
 const Scope = require('babel-traverse').Scope;
-const {Step} = require('./step/Step');
-const {Phi} = require('./step/Phi');
+const {Stub} = require('./step/Stub');
+const {Phi} = require('./step/ref/Phi');
 const {
   Block,
   NormalCompletion,
@@ -43,6 +43,7 @@ const subtraversal = (path) => {
   );
 }
 const BLOCK_STACK = [];
+const SCOPE_STACK = [];
 const handlers = {
   Program(path) {builder.setHandled(path);},
   LabeledStatement: {
@@ -127,7 +128,10 @@ const handlers = {
       builder.setHandled(path);
       const bodyBlock = makeBlock(path, 'start');
       const joinBlock = makeBlock(path, 'end');
-      BLOCK_STACK.push({exit: joinBlock});
+      BLOCK_STACK.push({
+        entry: bodyBlock,
+        exit: joinBlock,
+      });
       if (path.parentPath.isLabeledStatement()) {
         builder.setHandled(path.parentPath);
         const name = path.parent.label.name;
@@ -139,10 +143,12 @@ const handlers = {
       }
     },
     exit(path) {
-      const {exit} = BLOCK_STACK.pop();
-      const bodyBlock = builder.currentBlock;
-      bodyBlock.setCompletion(new NormalCompletion(bodyBlock, exit));
-      builder.currentBlock = exit;
+      const {entry, exit} = BLOCK_STACK.pop();
+      const bodyJoinBlock = builder.currentBlock;
+      if (bodyJoinBlock === entry) {
+        bodyJoinBlock.setCompletion(new NormalCompletion(bodyJoinBlock, exit));
+        builder.currentBlock = exit;
+      }
     }
   },
   ExpressionStatement: {
@@ -152,7 +158,7 @@ const handlers = {
   },
   'NumericLiteral|BooleanLiteral|StringLiteral': {
     exit(path) {
-      const constant = builder.getConstant(typeof path.node.value, path.node.value);
+      const constant = builder.getConstant(path.node.value);
       builder.currentBlock.steps.push(constant);
     }
   },
@@ -164,7 +170,7 @@ const handlers = {
   },
   'Identifier': {
     exit(path) {
-      builder.currentBlock.steps.push(new Step(`Identifier#${path.node.name}`));
+      builder.currentBlock.steps.push(new Stub(`Identifier#${path.node.name}`));
     }
   },
   ConditionalExpression: {
@@ -263,9 +269,9 @@ const handlers = {
       builder.setHandled(argument);
       subtraversal(argument);
       const exprBlock = builder.currentBlock;
-      const valueStep = exprBlock.steps[exprBlock.steps.length -1];
-      builder.currentBlock.steps.push(new Step(
-        path.node.operator, [valueStep]
+      const valueStub = exprBlock.steps[exprBlock.steps.length -1];
+      builder.currentBlock.steps.push(new Stub(
+        `${path.node.operator} $0`, [valueStub]
       ));
     }
   },
@@ -278,14 +284,14 @@ const handlers = {
       builder.setHandled(left);
       subtraversal(left);
       const leftBlock = builder.currentBlock;
-      const leftValueStep = leftBlock.steps[leftBlock.steps.length -1];
+      const leftValueStub = leftBlock.steps[leftBlock.steps.length -1];
       const right = path.get('right');
       builder.setHandled(right);
       subtraversal(right);
       const rightBlock = builder.currentBlock;
-      const rightValueStep = rightBlock.steps[rightBlock.steps.length -1];
-      builder.currentBlock.steps.push(new Step(
-        path.node.operator, [leftValueStep, rightValueStep]
+      const rightValueStub = rightBlock.steps[rightBlock.steps.length -1];
+      builder.currentBlock.steps.push(new Stub(
+        `$0 ${path.node.operator} $1`, [leftValueStub, rightValueStub]
       ));
     }
   },
@@ -298,14 +304,21 @@ const handlers = {
       builder.setHandled(left);
       subtraversal(left);
       const leftBlock = builder.currentBlock;
-      const leftValueStep = leftBlock.steps[leftBlock.steps.length -1];
+      const leftValueStub = leftBlock.steps[leftBlock.steps.length -1];
       const right = path.get('property');
       builder.setHandled(right);
-      subtraversal(right);
-      const rightBlock = builder.currentBlock;
-      const rightValueStep = rightBlock.steps[rightBlock.steps.length -1];
-      builder.currentBlock.steps.push(new Step(
-        path.node.computed ? '[ ]' : '.', [leftValueStep, rightValueStep]
+      let rightValueStub;
+      if (path.node.computed) {
+        subtraversal(right);
+        const rightBlock = builder.currentBlock;
+        rightValueStub = rightBlock.steps[rightBlock.steps.length -1];
+      }
+      else {
+        rightValueStub = builder.getConstant(path.node.property.name);
+        builder.currentBlock.steps.push(rightValueStub);
+      }
+      builder.currentBlock.steps.push(new Stub(
+        '[]', [leftValueStub, rightValueStub]
       ));
     }
   },

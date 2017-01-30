@@ -1,13 +1,15 @@
 'use strict';
 const {Block,NormalCompletion} = require('./block/Block');
-const Constant = require('./step/Constant').Constant;
+const {Constant} = require('./step/ref/Constant');
+const {Variable} = require('./step/ref/Variable');
+const {VariablePool} = require('./pool/VariablePool');
 class CFGBuilder {
   constructor(root = new Block, exit = new Block) {
     this.root = root;
     this.exit = exit;
     this.currentBlock = this.root;
     // string type -> value -> Constant
-    this.constants = new Map;
+    this.constants = new VariablePool('constants');
     this.nodeLabels = new WeakMap;
     this.labelCompletions = new Map;
     this.loopCompletions = new WeakMap;
@@ -38,19 +40,14 @@ class CFGBuilder {
     }
   }
 
-  getConstant(type, value) {
+  getConstant(value) {
     if (typeof value === 'object' && value) {
       throw Error(`value ${value} is not a primitive`);
     }
-    if (!this.constants.has(type)) {
-      this.constants.set(type, new Map);
+    if (this.constants.has(value) !== true) {
+      this.constants.set(value, null);
     }
-    const values = this.constants.get(type);
-    if (!values.has(value)) {
-      const constant = new Constant(type, value);
-      values.set(value, constant);
-    }
-    return values.get(value);
+    return new Constant(value);
   }
   
   setLabel(name, node, completion) {

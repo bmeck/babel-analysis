@@ -9,13 +9,13 @@
     | void
     ;
 */
-class Constant {
+const {Step} = require('../Step');
+class Constant extends Step {
   /*::
-    type: string;
     value: PRIMITIVE;
   */
-  constructor(type/*: string*/, value/*: PRIMITIVE*/) {
-    this.type = type;
+  constructor(value/*: PRIMITIVE*/) {
+    super(`constant`);
     this.value = value;
   }
 }
