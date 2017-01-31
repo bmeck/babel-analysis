@@ -6,9 +6,10 @@ const ast = require('babylon').parse(src, {
 });
 const t = require('babel-types');
 const traverse = require('babel-traverse').default
-const Scope = require('babel-traverse').Scope;
+const {Scope} = require('./pool/Scope');
 const {Stub} = require('./step/Stub');
 const {Phi} = require('./step/ref/Phi');
+const {Variable} = require('./step/ref/Variable');
 const {
   Block,
   NormalCompletion,
@@ -43,7 +44,7 @@ const subtraversal = (path) => {
   );
 }
 const BLOCK_STACK = [];
-const SCOPE_STACK = [];
+let SCOPE = builder.globals;
 const handlers = {
   Program(path) {builder.setHandled(path);},
   LabeledStatement: {
@@ -170,7 +171,7 @@ const handlers = {
   },
   'Identifier': {
     exit(path) {
-      builder.currentBlock.steps.push(new Stub(`Identifier#${path.node.name}`));
+      builder.currentBlock.steps.push(new Variable(SCOPE, path.node.name));
     }
   },
   ConditionalExpression: {

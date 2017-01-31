@@ -3,7 +3,7 @@ const {Block,NormalCompletion} = require('./block/Block');
 const {Constant} = require('./step/ref/Constant');
 const {Variable} = require('./step/ref/Variable');
 const {VariablePool} = require('./pool/VariablePool');
-const {VariablePool} = require('./pool/Scope');
+const {Scope} = require('./pool/Scope');
 class CFGBuilder {
   constructor(root = new Block, exit = new Block) {
     this.root = root;
@@ -11,7 +11,7 @@ class CFGBuilder {
     this.currentBlock = this.root;
     // string type -> value -> Constant
     this.constants = new VariablePool('constants');
-    this.globals = new Scope;
+    this.globals = new Scope('globals');
     this.nodeLabels = new WeakMap;
     this.labelCompletions = new Map;
     this.loopCompletions = new WeakMap;

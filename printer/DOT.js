@@ -48,8 +48,8 @@ exports.dump = (builder/*: CFGBuilder */) => {
       let step = block.steps[i];
       let step_port = `${i}`
       let step_node = `${block_node}:${step_port}`;
+      setId(step, step_node);
       if (step instanceof Stub) {
-        setId(step, step_node);
         // console.log(`${id(block)} -> ${id(step)} [label="step ${++i}"]`)
         console.log(`<tr><td port="${step_port}">${step.name}</td></tr>`);
         for (let arg_i = 0; arg_i < step.args.length; arg_i++) {
@@ -58,17 +58,19 @@ exports.dump = (builder/*: CFGBuilder */) => {
         }
       }
       else if (step instanceof Constant) {
-        setId(step, step_node);
         console.log(`<tr><td port="${step_port}">${JSON.stringify(step.value)}</td></tr>`);
         edges.push([`${step_node} -> $0`, step.value]);
       }
       else if (step instanceof Phi) {
-        setId(step, step_node);
         console.log(`<tr><td port="${step_port}">${step.name}</td></tr>`);
         for (let arg_i = 0; arg_i < step.args.length; arg_i++) {
           const [block,index] = step.args[arg_i];
           edges.push([`${step_node} -> $0:${index} [label=${arg_i}]`, block])
         }
+      }
+      else if (step instanceof Variable) {
+        console.log(`<tr><td port="${step_port}">${step.id}</td></tr>`);
+        edges.push([`${step_node} -> $0`, step.scope]);
       }
       else {
         console.error(step);
@@ -114,6 +116,7 @@ exports.dump = (builder/*: CFGBuilder */) => {
   console.log('digraph {');
   console.log('node [shape=box]');
   dumpVariablePool(() => ++uid, ids, builder.constants);
+  dumpVariablePool(() => ++uid, ids, builder.globals);
   if (builder.unhandled.size) {
     for (const unhandled of builder.unhandled) {
       console.log(`// unhandled ${unhandled.type} ${JSON.stringify(unhandled.loc.start)}`);
@@ -147,7 +150,5 @@ function dumpVariablePool(getUID, ids, pool) {
     ids.set(variableName, `${poolId}:${port}`);
     table += `<tr><td port="${port}">${variableName}</td></tr>`;
   }
-  if (table != '') {
-    console.log(`${poolId} [label=<<table><tr><td>${pool.name}</td></tr>${table}</table>>]`)
-  }
+  console.log(`${poolId} [label=<<table><tr><td>${pool.name}</td></tr>${table}</table>>]`);
 }
